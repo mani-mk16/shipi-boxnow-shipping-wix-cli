@@ -1,0 +1,5 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/wix-config.json",
+  "appId": "28390b01-b1ee-4594-bc47-32290047a8f4",
+  "projectId": "shipi-box-now-shipping"
+}
