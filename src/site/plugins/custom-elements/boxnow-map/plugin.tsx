@@ -95,8 +95,7 @@ const BoxNowMap: FC<Props> = (props) => {
               console.log('Attempting to update Wix Checkout custom fields...');
               const result = await updateLockerInCheckout(
                 props.checkoutId,
-                selected.boxnowLockerId,
-                selected.boxnowLockerAddressLine1 || ''
+                selected
               );
               console.log('Update Checkout Result:', result);
             } else {
@@ -254,22 +253,23 @@ const BoxNowMap: FC<Props> = (props) => {
               width: '100%',
               boxSizing: 'border-box',
               marginBottom: '10px',
-              padding: '12px 24px',
+              padding: '14px 24px',
               background: '#008060',
-              color: '#f0fdf4',
+              color: '#ffffff',
               textDecoration: 'none',
-              borderRadius: '24px',
+              borderRadius: '6px',
               textAlign: 'center',
-              fontWeight: 'bold',
+              fontSize: '15px',
+              fontWeight: '450',
               cursor: isLoading ? 'not-allowed' : 'pointer',
-              fontFamily: 'Helvetica, Arial, sans-serif',
+              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif',
               opacity: isLoading ? 0.8 : 1,
-              boxShadow: '0 4px 10px rgba(0, 128, 96, 0.2)'
+              boxShadow: 'none'
             }}
             onClick={!isLoading ? handleSelectLockerClick : undefined}
           >
             {isLoading && <span className="boxnow-spinner"></span>}
-            {isLoading ? 'Opening Map...' : 'Select BoxNow Locker from map'}
+            {isLoading ? 'Opening Map...' : 'Select box Now locker'}
           </a>
           <div style={{
             fontSize: '14px',

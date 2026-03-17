@@ -3,25 +3,23 @@ import { checkout } from '@wix/ecom';
 
 export const updateLockerInCheckout = webMethod(
     Permissions.Anyone,
-    async (checkoutId: string, lockerId: string, lockerAddress: string) => {
+    async (checkoutId: string, locker: any) => {
         try {
-            console.log('UpdateLockerInCheckout - ID:', checkoutId, 'Locker:', lockerId);
+            console.log('UpdateLockerInCheckout - ID:', checkoutId, 'Locker:', locker.boxnowLockerId);
 
-            // Fetch the current checkout to get its version/existing fields if needed
-            // but updateCheckout might be enough with just the ID and the fields we want to set.
-
-            const customField = {
-                title: 'BoxNow Locker ID',
-                value: lockerId
-            };
-
-            const addressField = {
-                title: 'BoxNow Locker Address',
-                value: lockerAddress
-            };
+            const customFields = [
+                { title: 'Selected Locker', value: `Name: ${locker.boxnowLockerName || ''}, Address: ${locker.boxnowLockerAddressLine1 || ''}, ${locker.boxnowLockerAddressLine2 || ''}, ${locker.boxnowLockerPostalCode || ''}, ID: ${locker.boxnowLockerId || ''}` },
+                { title: 'BoxNow Locker ID', value: locker.boxnowLockerId ?? '' },
+                { title: 'BoxNow Locker Name', value: locker.boxnowLockerName ?? '' },
+                { title: 'BoxNow Locker Address', value: locker.boxnowLockerAddressLine1 ?? '' },
+                { title: 'BoxNow Locker City', value: locker.boxnowLockerAddressLine2 ?? '' },
+                { title: 'BoxNow Locker Postal Code', value: locker.boxnowLockerPostalCode ?? '' },
+                { title: 'BoxNow Locker Latitude', value: locker.boxnowLockerLat ?? '' },
+                { title: 'BoxNow Locker Longitude', value: locker.boxnowLockerLng ?? '' }
+            ].filter(field => field.value); // Only send fields that have a value
 
             const result = await checkout.updateCheckout(checkoutId, {
-                customFields: [customField, addressField]
+                customFields
             });
 
             console.log('Checkout updated successfully:', result._id);

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/dashboard-page.json",
+  "id": "e4b3e8a4-0a37-4b7e-9665-c3f25c78a9c4",
+  "title": "Shipments",
+  "sidebar": {
+    "priority": 3
+  }
+}

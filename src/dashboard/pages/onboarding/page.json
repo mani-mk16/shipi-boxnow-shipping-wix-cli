@@ -1,0 +1,8 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/dashboard-page.json",
+  "id": "8dbd672e-d43a-46af-a615-c40498952ba0",
+  "title": "Onboarding",
+  "sidebar": {
+    "priority": 2
+  }
+}
