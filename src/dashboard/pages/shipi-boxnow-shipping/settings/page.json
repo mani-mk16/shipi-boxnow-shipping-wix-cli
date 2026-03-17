@@ -1,0 +1,8 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/dashboard-page.json",
+  "id": "45885e22-5369-41db-95b9-a0e8457b0b94",
+  "title": "Settings",
+  "sidebar": {
+    "priority": 4
+  }
+}

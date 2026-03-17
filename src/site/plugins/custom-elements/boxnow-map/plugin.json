@@ -1,0 +1,19 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/site-plugin.json",
+  "id": "2f948e99-5879-4b56-80b7-78d3648c113f",
+  "referenceComponentId": "53752881-2927-4c98-a56f-97d35304c3a2",
+  "marketData": {
+    "name": "boxnow-map",
+    "logoUrl": "..\\..\\..\\..\\assets\\boxnow-map\\logo.svg"
+  },
+  "placements": [
+    {
+      "appDefinitionId": "1380b703-ce81-ff05-f115-39571d94dfcd",
+      "widgetId": "14fd5970-8072-c276-1246-058b79e70c1a",
+      "slotId": "checkout:summary:totalsBreakdown:before"
+    }
+  ],
+  "installation": {
+    "autoAddToSite": true
+  }
+}
