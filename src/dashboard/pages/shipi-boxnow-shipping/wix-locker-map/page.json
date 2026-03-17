@@ -1,8 +1,0 @@
-{
-  "$schema": "https://dev.wix.com/wix-cli/schemas/dashboard-page.json",
-  "id": "94f6e288-904c-4db0-9971-94db6d8b0553",
-  "title": "Wix Locker Map",
-  "sidebar": {
-    "priority": 5
-  }
-}
