@@ -1,0 +1,6 @@
+{
+  "$schema": "https://dev.wix.com/wix-cli/schemas/ecom-validations.json",
+  "id": "d1afa140-e5e8-4c77-9a3d-3eb77fb65a14",
+  "name": "boxnow-validation",
+  "validateInCart": false
+}

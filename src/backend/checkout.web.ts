@@ -5,7 +5,7 @@ export const updateLockerInCheckout = webMethod(
     Permissions.Anyone,
     async (checkoutId: string, locker: any) => {
         try {
-            console.log('UpdateLockerInCheckout - ID:', checkoutId, 'Locker:', locker.boxnowLockerId);
+
 
             const customFields = [
                 { title: 'Selected Locker', value: `Name: ${locker.boxnowLockerName || ''}, Address: ${locker.boxnowLockerAddressLine1 || ''}, ${locker.boxnowLockerAddressLine2 || ''}, ${locker.boxnowLockerPostalCode || ''}, ID: ${locker.boxnowLockerId || ''}` },
@@ -22,10 +22,10 @@ export const updateLockerInCheckout = webMethod(
                 customFields
             });
 
-            console.log('Checkout updated successfully:', result._id);
+
             return { success: true, checkout: result };
         } catch (error: any) {
-            console.error('Failed to update checkout custom fields:', error);
+
             return { success: false, error: error.message };
         }
     }
@@ -35,17 +35,63 @@ export const clearLockerFromCheckout = webMethod(
     Permissions.Anyone,
     async (checkoutId: string) => {
         try {
-            console.log('ClearLockerFromCheckout - ID:', checkoutId);
+
 
             // Clearing custom fields by passing an empty array or empty values
             const result = await checkout.updateCheckout(checkoutId, {
                 customFields: []
             });
 
-            console.log('Checkout cleared successfully:', result._id);
+
             return { success: true };
         } catch (error: any) {
-            console.error('Failed to clear checkout custom fields:', error);
+
+            return { success: false, error: error.message };
+        }
+    }
+);
+
+export const getCheckoutCountry = webMethod(
+    Permissions.Anyone,
+    async (checkoutId: string) => {
+        try {
+
+
+            const result = await checkout.getCheckout(checkoutId);
+
+
+
+            // Use official Wix paths provided in documentation
+            const countryCode =
+                (result.shippingInfo as any)?.shippingDestination?.address?.country ||
+                (result.billingInfo as any)?.address?.country ||
+                (result.shippingInfo as any)?.shippingAddress?.address?.countryCode ||
+                (result.shippingInfo as any)?.logistics?.shippingAddress?.address?.countryCode;
+
+            const shippingMethodCode =
+                (result.shippingInfo as any)?.selectedShippingOption?.code ||
+                (result.shippingInfo as any)?.selectedCarrierServiceOption?.code;
+
+            // Extract saved locker data from custom fields
+            const customFields = result.customFields || [];
+            let savedLocker = null;
+            const lockerIdField = customFields.find((f: any) => f.title === 'BoxNow Locker ID');
+            if (lockerIdField && lockerIdField.value) {
+                const getField = (title: string) => customFields.find((f: any) => f.title === title)?.value || '';
+                savedLocker = {
+                    boxnowLockerId: lockerIdField.value,
+                    boxnowLockerName: getField('BoxNow Locker Name'),
+                    boxnowLockerAddressLine1: getField('BoxNow Locker Address'),
+                    boxnowLockerAddressLine2: getField('BoxNow Locker City'),
+                    boxnowLockerPostalCode: getField('BoxNow Locker Postal Code'),
+                    boxnowLockerLat: getField('BoxNow Locker Latitude'),
+                    boxnowLockerLng: getField('BoxNow Locker Longitude'),
+                };
+            }
+
+            return { success: true, countryCode, shippingMethodCode, savedLocker };
+        } catch (error: any) {
+
             return { success: false, error: error.message };
         }
     }

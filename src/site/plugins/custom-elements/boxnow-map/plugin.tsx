@@ -6,11 +6,23 @@ import styles from './plugin.module.css';
 import { getInstanceId } from '../../../../backend/instance.web';
 import { updateLockerInCheckout, clearLockerFromCheckout } from '../../../../backend/checkout.web';
 
+type AuthData = {
+  success: boolean;
+  partner_id?: string;
+  widget_gps?: boolean;
+  widget_btn_color?: string;
+  widget_btn_text?: string;
+  widget_no_locker_msg?: string;
+  regions?: Record<string, { max_weight: number; price: number }>;
+};
+
 type Props = {
   partnerId?: string;
   debug?: string; // passing boolean as string for custom element attribute
   appId?: string;
   checkoutId?: string; // Automatically passed by Wix on Checkout page
+  checkoutUpdatedDate?: string; // Automatically passed by Wix whenever checkout changes
+  onRefreshCheckout?: () => void; // Provided by Wix to refresh validations
 };
 
 declare global {
@@ -19,48 +31,95 @@ declare global {
   }
 }
 
+const DEFAULT_BTN_COLOR = '#008060';
+const DEFAULT_BTN_TEXT = 'Select a Locker';
+const DEFAULT_NO_LOCKER_MSG = 'If you select BoxNow shipping method please select a locker from map. If locker is not selected, system automatically choose the nearest locker from your location.';
+const FALLBACK_COUNTRIES = ['GR', 'CY', 'BG', 'HR'];
+const CHECKOUT_Z_INDEX_SELECTORS = [
+  '[data-hook="DeliverySection__root"]',
+  '[data-hook="wcn-payment-widget"]',
+  '#wcn-payment-widget-root',
+];
+
+const applyCheckoutZIndex = () => {
+  CHECKOUT_Z_INDEX_SELECTORS.forEach((selector) => {
+    document.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+      element.style.setProperty('z-index', '0', 'important');
+    });
+  });
+};
+
+const applyCheckoutZIndexAfterRender = () => {
+  applyCheckoutZIndex();
+  requestAnimationFrame(applyCheckoutZIndex);
+};
+
 const BoxNowMap: FC<Props> = (props) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLAnchorElement>(null); // Ref for the BoxNow trigger button
   const [selectedLocker, setSelectedLocker] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [authData, setAuthData] = useState<AuthData | null>(null);
+  const [countryCode, setCountryCode] = useState<string | null>(null);
+  const [shippingMethodCode, setShippingMethodCode] = useState<string | null>(null);
+  const prevCountryRef = useRef<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false); // Loading state for validation refresh
 
-  useEffect(() => {
-    console.log('BoxNow Component Props:', props);
-  }, [props]);
+  // Dynamic values from API response (with fallbacks)
+  const btnColor = authData?.widget_btn_color || DEFAULT_BTN_COLOR;
+  const btnText = authData?.widget_btn_text || DEFAULT_BTN_TEXT;
+  const noLockerMsg = authData?.widget_no_locker_msg || DEFAULT_NO_LOCKER_MSG;
+  const enableGPS = authData?.widget_gps ?? true;
+  const partnerId = authData?.partner_id
+    ? parseInt(authData.partner_id, 10)
+    : props.partnerId
+      ? parseInt(props.partnerId, 10)
+      : 123;
+
+  // Dynamic supported countries from enabled regions, or fallback
+  const supportedCountries = authData?.regions && Object.keys(authData.regions).length > 0
+    ? Object.keys(authData.regions).map(c => c.toUpperCase())
+    : FALLBACK_COUNTRIES;
+  const shouldShowSelectLockerButton = isAuthorized === true
+    && !selectedLocker
+    && !!countryCode
+    && supportedCountries.includes(countryCode)
+    && shippingMethodCode?.toUpperCase().startsWith('BOXNOW');
+
+
 
   useEffect(() => {
     const checkAuth = async () => {
-      const aid = props.appId || '28390b01-b1ee-4594-bc47-32290047a8f4';
+      const aid = '28390b01-b1ee-4594-bc47-32290047a8f4';
 
       try {
-        console.log('BoxNow CheckAuth - Fetching secure Instance ID...');
+
         const secureInstanceId = await getInstanceId();
 
-        console.log('BoxNow CheckAuth - App ID:', aid);
-        console.log('BoxNow CheckAuth - Secure Instance ID:', secureInstanceId);
+
 
         if (!secureInstanceId) {
-          console.warn('BoxNow: Failed to retrieve secure instanceId. Component remains hidden.');
+
           setIsAuthorized(false);
           return;
         }
 
         const url = `https://app.myshipi.com/platforms/wix/check_boxnow_map.php?app_id=${aid}&instance_id=${secureInstanceId}`;
-        console.log('BoxNow Fetching Auth:', url);
+
 
         const response = await fetch(url, {
           headers: {
             'ngrok-skip-browser-warning': 'true'
           }
         });
-        const data = await response.json();
+        const data: AuthData = await response.json();
 
-        console.log('BoxNow Auth Response:', data);
+
+        setAuthData(data);
         setIsAuthorized(data.success === true);
       } catch (error) {
-        console.error('BoxNow Auth API failed:', error);
+
         setIsAuthorized(false);
       }
     };
@@ -70,21 +129,101 @@ const BoxNowMap: FC<Props> = (props) => {
   useEffect(() => {
     if (isAuthorized !== true) return;
 
+    applyCheckoutZIndexAfterRender();
+
+    const observer = new MutationObserver(applyCheckoutZIndexAfterRender);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => observer.disconnect();
+  }, [isAuthorized]);
+
+  useEffect(() => {
+    const fetchCountry = async () => {
+      if (props.checkoutId) {
+        try {
+          const { getCheckoutCountry } = await import('../../../../backend/checkout.web');
+          const result = await getCheckoutCountry(props.checkoutId);
+          if (result.success) {
+            if (result.countryCode && result.countryCode.toUpperCase() !== countryCode) {
+              setCountryCode(result.countryCode.toUpperCase());
+            }
+            if (result.shippingMethodCode !== shippingMethodCode) {
+              setShippingMethodCode(result.shippingMethodCode || null);
+            }
+            // Restore saved locker from checkout custom fields (e.g. after page refresh)
+            if (result.savedLocker && !selectedLocker) {
+              setSelectedLocker(result.savedLocker);
+            }
+          }
+        } catch (error) {
+
+        }
+      }
+    };
+    fetchCountry();
+  }, [props.checkoutId, props.checkoutUpdatedDate]);
+
+  // Helper: call onRefreshCheckout on the custom element DOM node via props.container
+  const triggerCheckoutRefresh = () => {
+    const el = (props as any).container;
+    if (el && typeof el.onRefreshCheckout === 'function') {
+      setIsRefreshing(true);
+      el.onRefreshCheckout();
+      // Fallback: clear loading after 5s in case checkoutUpdatedDate doesn't fire
+      setTimeout(() => setIsRefreshing(false), 5000);
+    }
+  };
+
+  // When checkoutUpdatedDate changes, validation has completed — clear loading
+  useEffect(() => {
+    // console.log('BoxNow: checkoutUpdatedDate changed', props.checkoutUpdatedDate);
+    if (isRefreshing) {
+      setIsRefreshing(false);
+    }
+  }, [props.checkoutUpdatedDate]);
+
+  useEffect(() => {
+    if (prevCountryRef.current && countryCode && prevCountryRef.current !== countryCode) {
+
+      handleRemoveLocker();
+    }
+    prevCountryRef.current = countryCode;
+  }, [countryCode]);
+
+  useEffect(() => {
+    if (isAuthorized !== true) return;
+
     const loadBoxNowScript = () => {
-      // Cleanup existing script to force re-execution
-      const existingScript = document.querySelector('script[src*="boxnow.gr/map-widget/client/v5.js"]');
-      if (existingScript) {
-        existingScript.remove();
+      if (!countryCode || !supportedCountries.includes(countryCode) || !shippingMethodCode?.toUpperCase().startsWith('BOXNOW')) {
+
+        if (selectedLocker) {
+
+          handleRemoveLocker();
+        }
+        return;
       }
 
-      // Configure
+      const tld = countryCode === 'GR' ? 'gr' : countryCode.toLowerCase();
+      const scriptUrl = `https://widget-cdn.boxnow.${tld}/map-widget/client/v5.js`;
+
+
+
+      // Cleanup existing script to force re-execution
+      const allBoxNowScripts = document.querySelectorAll('script[src*="boxnow."]');
+      allBoxNowScripts.forEach(s => s.remove());
+
+      // Configure widget with dynamic values from API
       window._bn_map_widget_config = {
-        partnerId: props.partnerId ? parseInt(props.partnerId, 10) : 123,
+        partnerId: partnerId,
         parentElement: '#boxnowmap',
-        type: 'popup', // Use popup as requested
-        autoselect: false, // Required for popup type
+        type: 'popup',
+        autoselect: false,
+        enableGPS: enableGPS,
         afterSelect: async function (selected: any) {
-          console.log('BoxNow Locker Selected:', selected);
+
           setIsLoading(false);
 
           if (selected && selected.boxnowLockerId) {
@@ -92,14 +231,16 @@ const BoxNowMap: FC<Props> = (props) => {
 
             // NATIVE INTEGRATION: Update Wix Checkout with custom fields
             if (props.checkoutId) {
-              console.log('Attempting to update Wix Checkout custom fields...');
+
               const result = await updateLockerInCheckout(
                 props.checkoutId,
                 selected
               );
-              console.log('Update Checkout Result:', result);
+              if (result.success) {
+                triggerCheckoutRefresh();
+              }
             } else {
-              console.warn('BoxNow: No checkoutId found in props. Locker data NOT persistent to order.');
+
             }
           }
 
@@ -113,16 +254,16 @@ const BoxNowMap: FC<Props> = (props) => {
       };
 
       // Inject
-      console.log('Injecting BoxNow Script...');
+
       const script = document.createElement('script');
-      script.src = 'https://widget-cdn.boxnow.gr/map-widget/client/v5.js';
+      script.src = scriptUrl;
       script.async = true;
       script.defer = true;
       script.onload = () => {
-        console.log('BoxNow Script Loaded');
+
       };
       script.onerror = (e) => {
-        console.error('BoxNow Script Failed', e);
+
         setIsLoading(false);
       };
       document.head.appendChild(script);
@@ -131,7 +272,7 @@ const BoxNowMap: FC<Props> = (props) => {
     const timer = setTimeout(loadBoxNowScript, 500);
 
     return () => clearTimeout(timer);
-  }, [props.partnerId, props.debug, isAuthorized]);
+  }, [props.debug, isAuthorized, countryCode, authData, shippingMethodCode]);
 
   if (isAuthorized === false) {
     return null;
@@ -150,15 +291,15 @@ const BoxNowMap: FC<Props> = (props) => {
   };
 
   const handleRemoveLocker = async () => {
-    console.log('BoxNow: Removing selected locker...');
+
     setSelectedLocker(null);
 
     if (props.checkoutId) {
       try {
         await clearLockerFromCheckout(props.checkoutId);
-        console.log('BoxNow: Locker cleared from backend checkout.');
+        triggerCheckoutRefresh();
       } catch (err) {
-        console.error('BoxNow: Failed to clear backend checkout:', err);
+
       }
     }
 
@@ -197,11 +338,11 @@ const BoxNowMap: FC<Props> = (props) => {
             to { transform: rotate(360deg); }
           }
           .boxnow-locker-card {
-            border: 2px solid #008060;
+            border: 2px solid ${btnColor};
             border-radius: 16px;
             overflow: hidden;
             background: #fff;
-            box-shadow: 0 4px 12px rgba(0, 128, 96, 0.15);
+            box-shadow: 0 4px 12px ${btnColor}26;
             margin-bottom: 20px;
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             animation: boxnowFadeIn 0.3s ease-out;
@@ -211,7 +352,7 @@ const BoxNowMap: FC<Props> = (props) => {
             to { opacity: 1; transform: translateY(0); }
           }
           .boxnow-card-header {
-            background-color: #008060;
+            background-color: ${btnColor};
             padding: 10px 15px;
             display: flex;
             align-items: center;
@@ -237,14 +378,46 @@ const BoxNowMap: FC<Props> = (props) => {
             background: rgba(211, 47, 47, 0.05);
           }
           .boxnow-location-icon {
-            color: #008060;
+            color: ${btnColor};
             margin-right: 10px;
             font-size: 18px;
+          }
+          .boxnow-refresh-overlay {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            animation: boxnowFadeIn 0.2s ease-out;
+          }
+          .boxnow-refresh-spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #e0e0e0;
+            border-radius: 50%;
+            border-top-color: ${btnColor};
+            animation: spin 0.8s linear infinite;
           }
         `}
       </style>
 
-      {!selectedLocker && (
+      {isRefreshing && (
+        <div className="boxnow-refresh-overlay">
+          <span className="boxnow-refresh-spinner"></span>
+          <span style={{
+            fontSize: '13px',
+            color: '#555',
+            fontFamily: 'system-ui, -apple-system, sans-serif'
+          }}>Updating checkout...</span>
+        </div>
+      )}
+
+      {!selectedLocker && countryCode && supportedCountries.includes(countryCode) && shippingMethodCode?.toUpperCase().startsWith('BOXNOW') && (
         <div style={{ marginBottom: '20px' }}>
           <a
             href="javascript:;"
@@ -254,7 +427,7 @@ const BoxNowMap: FC<Props> = (props) => {
               boxSizing: 'border-box',
               marginBottom: '10px',
               padding: '14px 24px',
-              background: '#008060',
+              background: btnColor,
               color: '#ffffff',
               textDecoration: 'none',
               borderRadius: '6px',
@@ -269,7 +442,7 @@ const BoxNowMap: FC<Props> = (props) => {
             onClick={!isLoading ? handleSelectLockerClick : undefined}
           >
             {isLoading && <span className="boxnow-spinner"></span>}
-            {isLoading ? 'Opening Map...' : 'Select box Now locker'}
+            {isLoading ? 'Opening Map...' : btnText}
           </a>
           <div style={{
             fontSize: '14px',
@@ -279,12 +452,11 @@ const BoxNowMap: FC<Props> = (props) => {
             lineHeight: '1.4',
             padding: '0 10px'
           }}>
-            If you select BoxNow shipping method please select a locker from map. If locker is not selected, system automatically choose the nearest locker from your location.
           </div>
         </div>
       )}
 
-      {selectedLocker && selectedLocker.boxnowLockerId && (
+      {selectedLocker && selectedLocker.boxnowLockerId && countryCode && supportedCountries.includes(countryCode) && shippingMethodCode?.toUpperCase().startsWith('BOXNOW') && (
         <div className="boxnow-locker-card">
           <div className="boxnow-card-header">
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -316,7 +488,7 @@ const BoxNowMap: FC<Props> = (props) => {
             }}>
               <span>Locker ID: {selectedLocker.boxnowLockerId}</span>
               <span
-                style={{ color: '#008060', fontWeight: 'bold', cursor: 'pointer' }}
+                style={{ color: btnColor, fontWeight: 'bold', cursor: 'pointer' }}
                 onClick={handleSelectLockerClick}
               >CHANGE</span>
             </div>
@@ -340,6 +512,8 @@ const customElement = reactToWebComponent(
       debug: 'string',
       appId: 'string',
       checkoutId: 'string',
+      checkoutUpdatedDate: 'string',
+      onRefreshCheckout: 'function',
     },
   }
 );
